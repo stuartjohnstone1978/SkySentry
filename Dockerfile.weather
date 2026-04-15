@@ -17,4 +17,4 @@ USER weatheruser
 # Expose the weather agent's port
 EXPOSE 5002
 
-CMD ["python", "weather_agent.py"]
+CMD ["python", "context_weather.py"]

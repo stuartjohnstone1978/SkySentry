@@ -14,4 +14,4 @@ COPY --chown=sentryuser:sentrygroup . .
 # Switch to the non-privileged user
 USER sentryuser
 
-CMD ["python", "sentry.py"]
+CMD ["python", "observer_aviation.py"]
