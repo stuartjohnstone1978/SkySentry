@@ -5,6 +5,7 @@ import os, time, sys
 import hmac
 from dotenv import load_dotenv
 from waitress import serve
+import socket
 
 load_dotenv()
 app = Flask(__name__)
@@ -15,6 +16,19 @@ HOST_IP = os.getenv('HOST_IP')
 PORT = int(os.getenv('MOUTH_PORT', 5001))
 SECRET = os.getenv('SHARED_SECRET')
 MP3_PATH = os.path.join(os.path.dirname(__file__), "alert.mp3")
+
+def get_local_ip():
+    """Automatically finds the host's current IP address on the local network"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # We don't actually send data; this just tells us which IP we are using to talk to the world
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1' # Fallback
+    finally:
+        s.close()
+    return ip
 
 def log(msg):
     clean_msg = msg.replace('\n', ' ').replace('\r', ' ')
@@ -51,7 +65,8 @@ def say():
     try:
         cast = pychromecast.get_chromecast_from_host((NEST_IP, 8009, None, None, None))
         cast.wait()
-        media_url = f"http://{HOST_IP}:{PORT}/listen?cb={int(time.time())}"
+        MY_CURRENT_IP = get_local_ip()
+        media_url = f"http://{MY_CURRENT_IP}:{PORT}/listen?cb={int(time.time())}"
         cast.set_volume(0.7) 
         time.sleep(1) # Give it a second to settle  
         log(f"Nest is being told to listen at: {media_url}")

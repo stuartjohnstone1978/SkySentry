@@ -6,7 +6,7 @@ import sys
 import re
 from dotenv import load_dotenv
 from math import cos, asin, sqrt
-
+from datetime import datetime
 # Load settings from .env file
 load_dotenv()
 
@@ -24,7 +24,15 @@ MODEL = os.getenv('OLLAMA_MODEL', 'gemma4:e2b')
 # --- GLOBAL STATE ---
 seen_hexes = set()
 
+def is_quiet_hour():
+    """Checks if the current hour is within the defined quiet period."""
+    start = int(os.getenv('QUIET_START', 23))
+    end = int(os.getenv('QUIET_END', 7))
+    current_hour = datetime.now().hour
 
+    if start > end:  # Handles overnight (e.g., 23:00 to 07:00)
+        return current_hour >= start or current_hour < end
+    return start <= current_hour < end  # Handles daytime quiet hours
 
 def get_coords_from_postcode(postcode):
     """Fetches Lat/Lon for a UK postcode using the free Postcodes.io API"""
@@ -128,9 +136,11 @@ def run_sentry():
                     callsign = p.get('flight', 'Unknown').strip()
                     
                     log(f"!!! INTERCEPT: {type_code} ({callsign}) at {dist:.1f}km !!!")
-                    
-                    alert_msg = get_ai_announcement(type_code, callsign)
-                    speak(alert_msg)
+                    if is_quiet_hour():
+                        log(f"Intercepted {callsign} - suppressed due to Quiet Hours.")
+                    else:
+                        alert_msg = get_ai_announcement(type_code, callsign)
+                        speak(alert_msg)
                     
                     seen_hexes.add(icao_hex)
                     intercepts_this_pulse += 1
