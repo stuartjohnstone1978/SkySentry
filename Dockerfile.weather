@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+# Security: Create a non-privileged user for the weather agent
+RUN groupadd -r weathergroup && useradd -r -g weathergroup weatheruser
+
+WORKDIR /app
+
+# Install only the specific dependencies needed for the weather agent
+RUN pip install --no-cache-dir requests flask waitress python-dotenv
+
+# Copy only the weather agent script
+COPY --chown=weatheruser:weathergroup weather_agent.py .
+
+# Switch to the non-privileged user
+USER weatheruser
+
+# Expose the weather agent's port
+EXPOSE 5002
+
+CMD ["python", "weather_agent.py"]

@@ -6,7 +6,8 @@ import sys
 import re
 from dotenv import load_dotenv
 from math import cos, asin, sqrt
-from datetime import datetime
+from datetime import datetime 
+
 # Load settings from .env file
 load_dotenv()
 
@@ -22,7 +23,7 @@ SHARED_SECRET = os.getenv('SHARED_SECRET', '')
 MODEL = os.getenv('OLLAMA_MODEL', 'gemma4:e2b')
 
 # --- GLOBAL STATE ---
-seen_hexes = set()
+seen_hexes = {}
 
 def is_quiet_hour():
     """Checks if the current hour is within the defined quiet period."""
@@ -83,7 +84,7 @@ def get_military_planes():
         print(f"[Network Error] {e}")
         return []
 
-def get_ai_announcement(type_code, callsign):
+def get_ai_announcement(type_code, callsign, weather_context):
     """Generates a friendly alert using the local Gemma model"""
     # Sanitize inputs to prevent LLM prompt injection
     safe_type = re.sub(r'[^a-zA-Z0-9-]', '', str(type_code))[:15]
@@ -93,7 +94,8 @@ def get_ai_announcement(type_code, callsign):
     prompt = (
         f"You are a friendly aviation enthusiast. A {safe_type} aircraft with "
         f"callsign {safe_callsign} is flying in the local area. "
-        f"Write a 10-word fun notification for a fellow plane spotter to look at the sky."
+        f"Context: {weather_context} "
+        f"Write a 10-word alert"
     )
     try:
         response = ollama.chat(model=MODEL, messages=[
@@ -116,13 +118,21 @@ def speak(text):
     except Exception as e:
         print(f"[Bridge Error] Could not reach Mouth: {e}")
 
+def get_weather_context():
+    try:
+        # Talks to the Weather Agent on Port 5002
+        r = requests.get("http://host.docker.internal:5002/status")
+        return r.json()
+    except:
+        return {"cloud_pct": 50, "rain_now": 0}
+
 def run_sentry():
     global seen_hexes
     log(f"SkySentry Active. Monitoring {RADIUS_KM}km around {HOME_LAT}, {HOME_LON}")
     
     while True:
         planes = get_military_planes()
-        intercepts_this_pulse = 0
+        current_time = time.time()  # <--- FIX: Define current_time at the start of each pulse
         
         for p in planes:
             icao_hex = p.get('hex')
@@ -131,26 +141,38 @@ def run_sentry():
             if icao_hex and lat and lon:
                 dist = get_distance(lat, lon)
                 
-                if dist <= RADIUS_KM and icao_hex not in seen_hexes:
+                # Logic for return flights
+                last_seen = seen_hexes.get(icao_hex, 0)
+                is_fresh_sighting = (current_time - last_seen) > 3600 # 1 hour
+                
+                # UPDATED: Use is_fresh_sighting instead of 'not in seen_hexes'
+                if dist <= RADIUS_KM and is_fresh_sighting:
                     type_code = p.get('t', 'Military Aircraft')
                     callsign = p.get('flight', 'Unknown').strip()
                     
                     log(f"!!! INTERCEPT: {type_code} ({callsign}) at {dist:.1f}km !!!")
-                    if is_quiet_hour():
-                        log(f"Intercepted {callsign} - suppressed due to Quiet Hours.")
-                    else:
-                        alert_msg = get_ai_announcement(type_code, callsign)
-                        speak(alert_msg)
+
+                    weather = get_weather_context()
+                    cloud_pct = weather.get('cloud_pct', 0)
+                    is_cloudy = cloud_pct > 80
                     
-                    seen_hexes.add(icao_hex)
-                    intercepts_this_pulse += 1
+                    weather_context = "Cloudy skies." if is_cloudy else "Clear skies."
 
-        # Housekeeping: Prevent set from growing indefinitely
-        if len(seen_hexes) > 100:
-            seen_hexes.clear()
-        
-        # Poll every 45 seconds to be kind to the community API
+                    if is_quiet_hour():
+                        log(f"Suppressed {callsign} (Quiet Hours).")
+                    elif is_cloudy and type_code not in ['TYPH', 'F35', 'R1', 'VULC', 'LANC', 'EUFI']:
+                        log(f"Suppressed {callsign} (Low visibility).")
+                    else:
+                        alert_msg = get_ai_announcement(type_code, callsign, weather_context)
+                        speak(alert_msg)
+
+                    # Update the dictionary with the current timestamp
+                    seen_hexes[icao_hex] = current_time
+
+        # Housekeeping: Cleanup old entries every pulse to keep memory lean
+        cutoff = current_time - 7200 # 2 hours
+        seen_hexes = {hex_id: ts for hex_id, ts in seen_hexes.items() if ts > cutoff}
+                    
         time.sleep(45)
-
 if __name__ == "__main__":
     run_sentry()
