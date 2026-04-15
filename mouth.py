@@ -4,6 +4,7 @@ from gtts import gTTS
 import os, time, sys
 import hmac
 from dotenv import load_dotenv
+from waitress import serve
 
 load_dotenv()
 app = Flask(__name__)
@@ -51,7 +52,10 @@ def say():
         cast = pychromecast.get_chromecast_from_host((NEST_IP, 8009, None, None, None))
         cast.wait()
         media_url = f"http://{HOST_IP}:{PORT}/listen?cb={int(time.time())}"
-        cast.media_controller.play_media(media_url, "audio/mp3")
+        cast.set_volume(0.7) 
+        time.sleep(1) # Give it a second to settle  
+        log(f"Nest is being told to listen at: {media_url}")
+        cast.media_controller.play_media(media_url, "audio/mpeg")
         cast.media_controller.block_until_active()
         return "OK", 200
     except Exception as e:
@@ -59,8 +63,18 @@ def say():
 
 @app.route('/listen')
 def listen():
-    return send_file(MP3_PATH, mimetype="audio/mp3")
+    try:
+        return send_file(
+            'alert.mp3', 
+            mimetype='audio/mpeg',
+            as_attachment=False,
+            download_name='alert.mp3'
+        )
+    except Exception as e:
+        log(f"Error serving audio: {e}")
+        return "File not found", 404
 
 if __name__ == '__main__':
-    log(f"Mouth Active on port {PORT}")
-    app.run(host='0.0.0.0', port=PORT)
+    log(f"Mouth Active on port {PORT} (Waitress Production Server)")
+    # This replaces app.run()
+    serve(app, host='0.0.0.0', port=PORT, threads=6)
