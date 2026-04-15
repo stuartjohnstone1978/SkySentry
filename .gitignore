@@ -1,0 +1,19 @@
+# Secrets and Local Config
+.env
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary Media
+alert.mp3
+
+# Folder leftovers from previous iterations
+app/
+public/
+Caddyfile
+nest_test.py
+
+# Docker logs
+*.log

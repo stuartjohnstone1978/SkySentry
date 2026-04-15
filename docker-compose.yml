@@ -1,0 +1,21 @@
+services:
+  sentry:
+    build: .
+    volumes:
+      - .:/app:ro # Mount as Read-Only for extra security!
+    env_file: .env
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:
